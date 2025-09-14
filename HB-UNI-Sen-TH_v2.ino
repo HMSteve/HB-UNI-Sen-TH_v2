@@ -31,17 +31,19 @@
 #include <MultiChannelDevice.h>
 #include <Register.h>
 #include "Sensors/Sens_SHT31.h"    
-
-
-//---------------------------------------------------------
-// Schwellwerte für Batteriespannungsmessung
-#define BAT_VOLT_LOW 27         // 2.7V
-#define BAT_VOLT_CRITICAL 19    // 1.9V
+#include "Sensors/tmBattery.h"  
 
 //---------------------------------------------------------
-// Optionen für Batteriespannungsmessung, siehe README
-#define BAT_SENSOR BatterySensor    // Standard, UBatt = Betriebsspannung AVR
-//#define BAT_SENSOR BatterySensorUni<14, 9, 3000>    // mit StepUp, sense pin A0, activation pin D9, Vcc StepUp 3,0V
+// Schwellwerte für Batteriespannungsmessung (for step-up devices lower values can be used)
+#define BAT_VOLT_LOW 23         // 2.7V
+#define BAT_VOLT_CRITICAL 21    // 1.9V
+
+//---------------------------------------------------------
+// Optionen für Batteriespannungsmessung: Standard: UBatt = Betriebsspannung AVR; unter Last mit tmBatteryLoad
+// #define BAT_SENSOR BatterySensor     
+// tmBatteryLoad: sense pin, activation pin, Faktor = Rges/Rlow*1000, z.B. 10/30 Ohm, Faktor 40/10*1000 = 4000, 200ms Belastung vor Messung
+//#define BAT_SENSOR tmBatteryLoad<A0, 16, 4000, 200>  
+#define BAT_SENSOR tmBatteryResDiv<A0, A1, 5700>  
 
 //---------------------------------------------------------
 // Pin definitions
@@ -60,8 +62,8 @@ using namespace as;
 // define all device properties
 // Bei mehreren Geräten des gleichen Typs muss Device ID und Device Serial unterschiedlich sein!
 const struct DeviceInfo PROGMEM devinfo = {
-    { 0xF8, 0x00, 0x02 },    // Device ID
-    "SGSENTH002",            // Device Serial
+    { 0xF8, 0x00, 0x04 },    // Device ID
+    "SGSENTH004",            // Device Serial
     { 0xF8, 0x00 },          // Device Model
     // Firmware Version
     // die CCU Addon xml Datei ist mit der Zeile <parameter index="9.0" size="1.0" cond_op="E" const_value="0x12" />
@@ -177,7 +179,7 @@ public:
         ledMode(1);
         lowBatLimit(BAT_VOLT_LOW);
         transmitDevTryMax(6);
-        updIntervall(10);
+        updIntervall(20);
     }
 };
 
@@ -252,7 +254,8 @@ public:
       // digits will be 00 for higher resolution, override battery() with modified
       // voltage() calculation see my HB-SEC-WDS-2 for an example with higher
       // resolution
-      batteryVoltage = 100UL * device().battery().current();
+      // !! do not multiply by 100 when using tmBatteryLoad
+      batteryVoltage = 100UL * device().battery().current() / 100;
       
       DPRINT("Temperature10 / Humidity / Dewpoint10 / Battery: ");
       DDEC(temperature10);
@@ -332,12 +335,13 @@ void setup()
     sdev.initDone();
 
     //switch on MOSFET to power CC1101
-    pinMode(CC1101_POWERON_PIN, OUTPUT);
-    digitalWrite (CC1101_POWERON_PIN, LOW);
+    //pinMode(CC1101_POWERON_PIN, OUTPUT);
+    //digitalWrite (CC1101_POWERON_PIN, LOW);
 }
 
 void loop()
 {
+    //DPRINTLN("Waking up");
     bool worked = hal.runready();
     bool poll   = sdev.pollRadio();
     if (worked == false && poll == false) {
